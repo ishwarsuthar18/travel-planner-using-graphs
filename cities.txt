@@ -1,6 +1,5 @@
 # Travel Planner — City Route Input File
 # Format: From  To  Distance_km  Cost_INR  [B = bidirectional]
-# Lines starting with # are ignored
 
 Delhi       Agra        200     150     B
 Delhi       Jaipur      280     250     B
