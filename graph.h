@@ -1,43 +1,66 @@
-#ifndef GRAPH_H
-#define GRAPH_H
+#pragma once
+#include <string>
+#include <vector>
 
-#include <bits/stdc++.h>
-using namespace std;
+// ─────────────────────────────────────────────
+//  Data Structures
+// ─────────────────────────────────────────────
 
+enum TravelMode { ROAD = 0, RAIL = 1, AIR = 2 };
+
+struct City {
+    int    id;
+    std::string name;
+    double lat;
+    double lng;
+};
 
 struct Edge {
-    int    dest;      // dest city index
-    int    distance;  // km
-    int    cost;      // rupee
+    int    to;
+    double distance;   // km
+    double time;       // minutes
+    double cost;       // INR
+    TravelMode mode;
 };
 
-// ─── Graph: adj ─────────────────────────────
+// Adjacency-list node
+struct AdjNode {
+    Edge   edge;
+    AdjNode* next;
+    AdjNode(Edge e) : edge(e), next(nullptr) {}
+};
+
+// ─────────────────────────────────────────────
+//  Graph class
+// ─────────────────────────────────────────────
 class Graph {
-private:
-    int                    V;          // number of cities
-    vector<string>         cityNames;  // index -> name
-    map<string, int>       cityIndex;  // name  -> index
-    vector<vector<Edge>>   adjList;
-
 public:
+    static const int MAXN = 20;
+    int   numCities;
+    City  cities[MAXN];
+
+    // Adjacency list (raw pointers to show DSA knowledge)
+    AdjNode* adjList[MAXN];
+
+    // Adjacency matrix [from][to] — stores distance (0 = no edge)
+    double adjMatrix[MAXN][MAXN];
+    bool   hasEdge[MAXN][MAXN];
+
     Graph();
+    ~Graph();
 
-    // ── Node mana-- function
-    void addCity(const string& name);
-    bool cityExists(const string& name) const;
-    int  getIndex(const string& name)   const;
-    string getName(int idx)             const;
-    int  cityCount()                    const;
-    const vector<string>& getCityNames()       const;
-    const vector<vector<Edge>>& getAdjList()   const;
+    void addCity(int id, const std::string& name, double lat, double lng);
+    void addEdge(int from, int to, double dist, double time, double cost,
+                 TravelMode mode, bool undirected = true);
 
-    // ── Edge mana--fuction 
-    void addRoute(const string& from, const string& to, int dist, int cost);
-    void addBidirectionalRoute(const string& from, const string& to, int dist, int cost);
+    void loadDefaultNetwork();   // pre-loads 15 Indian cities
 
-    // ── Display function
-    void printGraph() const;
-    void printCities() const;
+    // Utilities
+    int  getCityIndex(const std::string& name) const;
+    void printAdjList() const;
+    void printAdjMatrix() const;
+    void printStats() const;
+
+    // Returns edges from a city (helper for algorithms)
+    std::vector<Edge> getEdges(int from) const;
 };
-
-#endif

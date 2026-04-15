@@ -1,0 +1,353 @@
+#include "graph.h"
+#include "algorithms.h"
+#include "ui.h"
+#include <iostream>
+#include <iomanip>
+#include <string>
+#include <vector>
+#include <limits>
+
+// ─────────────────────────────────────────────
+//  Helper: build city name array for UI
+// ─────────────────────────────────────────────
+static void buildNameArray(const Graph& g, std::string names[]) {
+    for (int i = 0; i < g.numCities; i++) names[i] = g.cities[i].name;
+}
+
+// ─────────────────────────────────────────────
+//  Menu 1 — Plan a Route
+// ─────────────────────────────────────────────
+void menuPlanRoute(Graph& g) {
+    std::string names[Graph::MAXN];
+    buildNameArray(g, names);
+
+    clearScreen();
+    std::cout << CYAN << "\n  ═══ PLAN A ROUTE ════════════════════════\n" << RESET;
+    printCityList(g.numCities, names);
+
+    int src = selectCity("Select SOURCE city", g.numCities, names);
+    int dst = selectCity("Select DESTINATION city", g.numCities, names);
+    if (src == dst) { std::cout << RED << "  Source and destination must differ!\n" << RESET; pause(); return; }
+
+    int crit  = selectCriteria();
+    int algo  = selectAlgorithm();
+    printAlgoExplanation(algo);
+
+    animateSearching("  Calculating route");
+
+    PathResult result;
+    switch (algo) {
+        case 1: result = dijkstra(g, src, dst, (OptCriteria)crit); break;
+        case 2: result = bfs(g, src, dst); break;
+        case 3: result = dfs(g, src, dst); break;
+        case 4: result = astar(g, src, dst, (OptCriteria)crit); break;
+        case 5: result = bellmanFord(g, src, dst, (OptCriteria)crit); break;
+        default: result = dijkstra(g, src, dst, (OptCriteria)crit);
+    }
+
+    std::cout << GREEN << "\n  ─── Result (" << result.algoName << ") ──────────────────────\n" << RESET;
+    printPath(g, result);
+
+    // Print step-by-step breakdown
+    if (result.found && result.path.size() > 1) {
+        std::cout << "\n  Step-by-step breakdown:\n";
+        std::cout << "  " << std::string(65, '-') << "\n";
+        std::cout << "  " << std::setw(20) << std::left << "Segment"
+                  << std::setw(10) << "Dist(km)"
+                  << std::setw(10) << "Time(min)"
+                  << std::setw(10) << "Cost(₹)"
+                  << "Mode\n";
+        std::cout << "  " << std::string(65, '-') << "\n";
+
+        for (int i = 0; i + 1 < (int)result.path.size(); i++) {
+            int u = result.path[i], v = result.path[i+1];
+            for (const Edge& e : g.getEdges(u)) {
+                if (e.to == v) {
+                    std::string seg = g.cities[u].name + "→" + g.cities[v].name;
+                    std::string modeStr = (e.mode==ROAD)?"Road":(e.mode==RAIL)?"Rail":"Air";
+                    std::cout << "  " << std::setw(20) << std::left << seg
+                              << std::setw(10) << (int)e.distance
+                              << std::setw(10) << (int)e.time
+                              << std::setw(10) << (int)e.cost
+                              << modeStr << "\n";
+                    break;
+                }
+            }
+        }
+        std::cout << "  " << std::string(65, '-') << "\n";
+    }
+    pause();
+}
+
+// ─────────────────────────────────────────────
+//  Menu 2 — Multi-Stop Journey
+// ─────────────────────────────────────────────
+void menuMultiStop(Graph& g) {
+    std::string names[Graph::MAXN];
+    buildNameArray(g, names);
+
+    clearScreen();
+    std::cout << CYAN << "\n  ═══ MULTI-STOP JOURNEY ══════════════════\n" << RESET;
+    printCityList(g.numCities, names);
+
+    int start = selectCity("Select START city", g.numCities, names);
+    int numStops = 0;
+    std::cout << "  How many stops to add (1-5)? ";
+    std::cin >> numStops;
+    if (numStops < 1) numStops = 1;
+    if (numStops > 5) numStops = 5;
+
+    std::vector<int> stops;
+    for (int i = 0; i < numStops; i++) {
+        int s = selectCity("  Add stop " + std::to_string(i+1), g.numCities, names);
+        stops.push_back(s);
+    }
+
+    int crit = selectCriteria();
+    animateSearching("  Planning optimal multi-stop route");
+
+    std::vector<int> order = multiStopPlan(g, start, stops, (OptCriteria)crit);
+
+    std::cout << GREEN << "\n  Optimal visit order:\n" << RESET;
+    std::cout << "  ";
+    for (int i = 0; i < (int)order.size(); i++) {
+        std::cout << GREEN << g.cities[order[i]].name << RESET;
+        if (i + 1 < (int)order.size()) std::cout << YELLOW << " → " << RESET;
+    }
+    std::cout << "\n  (Total cities in route: " << order.size() << ")\n";
+    pause();
+}
+
+// ─────────────────────────────────────────────
+//  Menu 3 — Compare All Algorithms
+// ─────────────────────────────────────────────
+void menuCompare(Graph& g) {
+    std::string names[Graph::MAXN];
+    buildNameArray(g, names);
+
+    clearScreen();
+    std::cout << CYAN << "\n  ═══ ALGORITHM COMPARISON ════════════════\n" << RESET;
+    printCityList(g.numCities, names);
+
+    int src  = selectCity("Select SOURCE city", g.numCities, names);
+    int dst  = selectCity("Select DESTINATION city", g.numCities, names);
+    int crit = selectCriteria();
+
+    animateSearching("  Running all algorithms");
+
+    std::vector<PathResult> results;
+    results.push_back(dijkstra(g, src, dst, (OptCriteria)crit));
+    results.push_back(bfs(g, src, dst));
+    results.push_back(dfs(g, src, dst));
+    results.push_back(astar(g, src, dst, (OptCriteria)crit));
+    results.push_back(bellmanFord(g, src, dst, (OptCriteria)crit));
+
+    printComparisonTable(g, src, dst, results);
+
+    // Show each path
+    for (auto& r : results) {
+        std::cout << "\n  " << YELLOW << r.algoName << ": " << RESET;
+        if (r.found) {
+            for (int i = 0; i < (int)r.path.size(); i++) {
+                std::cout << g.cities[r.path[i]].name;
+                if (i+1 < (int)r.path.size()) std::cout << " → ";
+            }
+        } else std::cout << RED << "No path found" << RESET;
+        std::cout << "\n";
+    }
+    pause();
+}
+
+// ─────────────────────────────────────────────
+//  Menu 4 — View Graph Structure
+// ─────────────────────────────────────────────
+void menuViewGraph(Graph& g) {
+    clearScreen();
+    std::cout << CYAN << "\n  ═══ GRAPH STRUCTURE ══════════════════\n" << RESET;
+
+    g.printStats();
+
+    std::cout << "\n  " << YELLOW << "1." << RESET << " View Adjacency List\n";
+    std::cout << "  " << YELLOW << "2." << RESET << " View Adjacency Matrix\n";
+    std::cout << "  Choice: ";
+    int c; std::cin >> c;
+
+    if (c == 1) g.printAdjList();
+    else        g.printAdjMatrix();
+    pause();
+}
+
+// ─────────────────────────────────────────────
+//  Menu 5 — Budget-Constrained Route
+// ─────────────────────────────────────────────
+void menuBudget(Graph& g) {
+    std::string names[Graph::MAXN];
+    buildNameArray(g, names);
+
+    clearScreen();
+    std::cout << CYAN << "\n  ═══ BUDGET-CONSTRAINED ROUTE ═══════════\n" << RESET;
+    printCityList(g.numCities, names);
+
+    int src = selectCity("Select SOURCE city", g.numCities, names);
+    int dst = selectCity("Select DESTINATION city", g.numCities, names);
+
+    double budget = 0;
+    std::cout << "  Enter max budget (₹): ";
+    std::cin >> budget;
+
+    int crit = selectCriteria();
+    animateSearching("  Finding best route within budget");
+
+    PathResult result = budgetDijkstra(g, src, dst, budget, (OptCriteria)crit);
+
+    std::cout << GREEN << "\n  ─── Budget Route Result ──────────────────\n" << RESET;
+    if (result.found)
+        std::cout << "  Budget: ₹" << budget << "   Actual Cost: ₹" << result.totalCost << "\n";
+    printPath(g, result);
+    pause();
+}
+
+// ─────────────────────────────────────────────
+//  Menu 6 — Floyd-Warshall all-pairs
+// ─────────────────────────────────────────────
+void menuFloyd(Graph& g) {
+    clearScreen();
+    std::cout << CYAN << "\n  ═══ FLOYD-WARSHALL ALL-PAIRS SHORTEST PATH ══\n" << RESET;
+    std::cout << "  Time: O(V³)   Space: O(V²)\n\n";
+
+    int crit = selectCriteria();
+    animateSearching("  Computing all-pairs matrix");
+
+    double dist[20][20]; int next[20][20];
+    floydWarshall(g, (OptCriteria)crit, dist, next);
+
+    std::string label = (crit == BY_TIME) ? "Time(min)" :
+                        (crit == BY_COST) ? "Cost(INR)" : "Dist(km)";
+    std::cout << "\n  All-pairs " << label << " (INF = unreachable):\n\n";
+
+    // Header
+    std::cout << "            ";
+    for (int j = 0; j < g.numCities; j++)
+        std::cout << CYAN << std::setw(8) << g.cities[j].name.substr(0,7) << RESET;
+    std::cout << "\n";
+
+    for (int i = 0; i < g.numCities; i++) {
+        std::cout << GREEN << std::setw(12) << std::left << g.cities[i].name.substr(0,10) << RESET;
+        for (int j = 0; j < g.numCities; j++) {
+            if (dist[i][j] >= 1e17)
+                std::cout << std::setw(8) << " INF";
+            else
+                std::cout << std::setw(8) << (int)dist[i][j];
+        }
+        std::cout << "\n";
+    }
+
+    // Interactive: pick a pair to trace path
+    std::cout << "\n  Trace specific path? (y/n): ";
+    char ch; std::cin >> ch;
+    if (ch == 'y' || ch == 'Y') {
+        std::string names[Graph::MAXN]; buildNameArray(g, names);
+        int src = selectCity("Select SOURCE", g.numCities, names);
+        int dst = selectCity("Select DESTINATION", g.numCities, names);
+        if (dist[src][dst] >= 1e17) {
+            std::cout << RED << "  No path between these cities!\n" << RESET;
+        } else {
+            std::cout << "\n  Path: ";
+            int cur = src;
+            while (cur != dst) {
+                std::cout << GREEN << g.cities[cur].name << RESET << " → ";
+                cur = next[cur][dst];
+                if (cur == -1) break;
+            }
+            std::cout << GREEN << g.cities[dst].name << RESET << "\n";
+            std::cout << "  Total " << label << ": " << CYAN << (int)dist[src][dst] << RESET << "\n";
+        }
+    }
+    pause();
+}
+
+// ─────────────────────────────────────────────
+//  Menu 7 — City Information
+// ─────────────────────────────────────────────
+void menuCityInfo(Graph& g) {
+    std::string names[Graph::MAXN];
+    buildNameArray(g, names);
+
+    clearScreen();
+    std::cout << CYAN << "\n  ═══ CITY INFORMATION ════════════════════\n" << RESET;
+    printCityList(g.numCities, names);
+
+    int idx = selectCity("Select city", g.numCities, names);
+    const City& c = g.cities[idx];
+
+    std::cout << "\n  ┌──────────────────────────────────────┐\n";
+    std::cout << "  │  " << GREEN << std::setw(20) << std::left << c.name << RESET << "              │\n";
+    std::cout << "  │  Latitude : " << CYAN << c.lat << RESET << "                    │\n";
+    std::cout << "  │  Longitude: " << CYAN << c.lng << RESET << "                    │\n";
+    std::cout << "  └──────────────────────────────────────┘\n";
+
+    // Connected cities
+    std::cout << "\n  " << YELLOW << "Direct connections:\n" << RESET;
+    std::vector<Edge> edges = g.getEdges(idx);
+    if (edges.empty()) {
+        std::cout << "  (None)\n";
+    } else {
+        std::cout << "  " << std::setw(15) << std::left << "City"
+                  << std::setw(10) << "Dist(km)"
+                  << std::setw(10) << "Time(min)"
+                  << std::setw(10) << "Cost(₹)"
+                  << "Mode\n";
+        std::cout << "  " << std::string(55, '-') << "\n";
+        for (auto& e : edges) {
+            std::string modeStr = (e.mode==ROAD)?"Road":(e.mode==RAIL)?"Rail":"Air";
+            std::cout << "  " << std::setw(15) << std::left << g.cities[e.to].name
+                      << std::setw(10) << (int)e.distance
+                      << std::setw(10) << (int)e.time
+                      << std::setw(10) << (int)e.cost
+                      << modeStr << "\n";
+        }
+    }
+    pause();
+}
+
+// ─────────────────────────────────────────────
+//  MAIN
+// ─────────────────────────────────────────────
+int main() {
+    Graph g;
+    g.loadDefaultNetwork();
+
+    clearScreen();
+    printBanner();
+
+    std::cout << GREEN << "  Network loaded: " << g.numCities << " cities, graph ready!\n" << RESET;
+    pause();
+
+    int choice = 0;
+    while (true) {
+        clearScreen();
+        printBanner();
+        printMainMenu();
+        std::cin >> choice;
+        std::cin.ignore(10000, '\n');
+
+        switch (choice) {
+            case 1: menuPlanRoute(g);   break;
+            case 2: menuMultiStop(g);   break;
+            case 3: menuCompare(g);     break;
+            case 4: menuViewGraph(g);   break;
+            case 5: menuBudget(g);      break;
+            case 6: menuFloyd(g);       break;
+            case 7: menuCityInfo(g);    break;
+            case 8:
+                clearScreen();
+                std::cout << CYAN << "\n  Thank you for using Travel Planner!\n" << RESET;
+                std::cout << YELLOW << "  Safe travels! 🗺\n\n" << RESET;
+                return 0;
+            default:
+                std::cout << RED << "  Invalid choice. Try again.\n" << RESET;
+                break;
+        }
+    }
+    return 0;
+}
