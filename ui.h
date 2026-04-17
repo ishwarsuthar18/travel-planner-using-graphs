@@ -10,14 +10,16 @@
 #define BOLD    "\033[1m"
 #define MAGENTA "\033[35m"
 #define WHITE   "\033[37m"
+#define BLUE    "\033[34m"
 
 void clearScreen();
 void printBanner();
 void printMainMenu();
 void pause();
-void printCityList(int numCities, const std::string names[]);
-int  selectCity(const std::string& prompt, int numCities, const std::string names[]);
-int  selectCriteria();
-int  selectAlgorithm();
+void printCityList    (int numCities, const std::string names[]);
+int  selectCity       (const std::string& prompt, int numCities, const std::string names[]);
+int  selectCriteria   ();
+int  selectAlgorithm  ();
+int  selectTravelMode ();   // NEW: road / rail / air / any
 void printAlgoExplanation(int algo);
-void animateSearching(const std::string& msg);
+void animateSearching (const std::string& msg);

@@ -2,18 +2,18 @@
 #include "ui.h"
 #include <iostream>
 #include <iomanip>
+#define _USE_MATH_DEFINES
 #include <cmath>
-#include <climits>
-#include <string>
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+#include <climits>
+#include <string>
 
-const double INF = 1e18;
+static const double INF = 1e18;
 
 // ─────────────────────────────────────────────
-//  Helper: edge weight selector
+//  Helper: extract edge weight by criteria
 // ─────────────────────────────────────────────
 static double weight(const Edge& e, OptCriteria c) {
     if (c == BY_TIME) return e.time;
@@ -21,99 +21,162 @@ static double weight(const Edge& e, OptCriteria c) {
     return e.distance;
 }
 
+// ═════════════════════════════════════════════
+//  CUSTOM DATA STRUCTURES
+// ═════════════════════════════════════════════
+
 // ─────────────────────────────────────────────
-//  MinHeap
+//  MinHeap — binary min-heap
 // ─────────────────────────────────────────────
-MinHeap::MinHeap(int cap) : size(0), capacity(cap) {
+MinHeap::MinHeap(int cap) : sz(0), capacity(cap) {
     data = new HeapNode[cap];
 }
 MinHeap::~MinHeap() { delete[] data; }
 
 void MinHeap::heapifyUp(int i) {
     while (i > 0) {
-        int p = (i - 1) / 2;
-        if (data[p].key > data[i].key) {
-            HeapNode tmp = data[p]; data[p] = data[i]; data[i] = tmp;
-            i = p;
+        int parent = (i - 1) / 2;
+        if (data[parent].key > data[i].key) {
+            HeapNode tmp   = data[parent];
+            data[parent]   = data[i];
+            data[i]        = tmp;
+            i = parent;
         } else break;
     }
 }
+
 void MinHeap::heapifyDown(int i) {
     while (true) {
-        int smallest = i, l = 2*i+1, r = 2*i+2;
-        if (l < size && data[l].key < data[smallest].key) smallest = l;
-        if (r < size && data[r].key < data[smallest].key) smallest = r;
+        int smallest = i;
+        int left     = 2 * i + 1;
+        int right    = 2 * i + 2;
+        if (left  < sz && data[left].key  < data[smallest].key) smallest = left;
+        if (right < sz && data[right].key < data[smallest].key) smallest = right;
         if (smallest == i) break;
-        HeapNode tmp = data[i]; data[i] = data[smallest]; data[smallest] = tmp;
+        HeapNode tmp      = data[i];
+        data[i]           = data[smallest];
+        data[smallest]    = tmp;
         i = smallest;
     }
 }
+
 void MinHeap::push(double key, int city) {
-    data[size++] = {key, city};
-    heapifyUp(size - 1);
+    data[sz++] = {key, city};
+    heapifyUp(sz - 1);
 }
+
 HeapNode MinHeap::pop() {
     HeapNode top = data[0];
-    data[0] = data[--size];
+    data[0] = data[--sz];
     heapifyDown(0);
     return top;
 }
 
 // ─────────────────────────────────────────────
-//  Stack
+//  Stack — for iterative DFS
 // ─────────────────────────────────────────────
-Stack::Stack(int cap) : top(-1), capacity(cap) { data = new StackNode[cap]; }
+Stack::Stack(int cap) : top(-1), capacity(cap) {
+    data = new StackNode[cap];
+}
 Stack::~Stack() { delete[] data; }
+
 void Stack::push(StackNode n) { data[++top] = n; }
-StackNode Stack::pop() { return data[top--]; }
+StackNode Stack::pop()        { return data[top--]; }
 
 // ─────────────────────────────────────────────
-//  Queue
+//  Queue — circular buffer for BFS
 // ─────────────────────────────────────────────
-Queue::Queue(int cap) : head(0), tail(0), cap(cap) { data = new QueueNode[cap]; }
+Queue::Queue(int cap) : head(0), tail(0), cap(cap) {
+    data = new QueueNode[cap];
+}
 Queue::~Queue() { delete[] data; }
-void Queue::push(QueueNode n) { data[tail++ % cap] = n; }
-QueueNode Queue::pop() { return data[head++ % cap]; }
 
-// ─────────────────────────────────────────────
-//  Helper: reconstruct path result
-// ─────────────────────────────────────────────
-static PathResult buildResult(const Graph& g, const std::vector<int>& path,
-                               int steps, const std::string& name) {
+void Queue::push(QueueNode n) { data[tail % cap] = n; tail++; }
+QueueNode Queue::pop()        { return data[head++ % cap]; }
+
+// ═════════════════════════════════════════════
+//  HELPER: Build PathResult from path + actual edges used
+//
+//  Each algorithm now tracks the exact Edge it chose for each hop.
+//  This avoids the ambiguity when parallel edges (road + rail + air)
+//  exist between the same pair of cities.
+// ═════════════════════════════════════════════
+static PathResult buildResultFromEdges(const std::vector<int>& path,
+                                        const std::vector<Edge>& usedEdges,
+                                        int steps, const std::string& name) {
     PathResult r;
     r.path          = path;
     r.found         = !path.empty();
     r.stepsExplored = steps;
     r.algoName      = name;
-    r.totalDist = r.totalTime = r.totalCost = 0;
+    r.totalDist = r.totalTime = r.totalCost = 0.0;
 
-    for (int i = 0; i + 1 < (int)path.size(); i++) {
-        int u = path[i], v = path[i+1];
-        // find best direct edge
-        for (const Edge& e : g.getEdges(u)) {
-            if (e.to == v) {
-                r.totalDist += e.distance;
-                r.totalTime += e.time;
-                r.totalCost += e.cost;
-                break;
-            }
-        }
+    for (const Edge& e : usedEdges) {
+        r.totalDist += e.distance;
+        r.totalTime += e.time;
+        r.totalCost += e.cost;
     }
     return r;
 }
 
-// ─────────────────────────────────────────────
-//  DIJKSTRA
-//  Time: O((V + E) log V)  Space: O(V)
-// ─────────────────────────────────────────────
+// Fallback: when we only have a path vector (BFS/DFS), pick the edge
+// whose weight-by-criteria is smallest among parallel edges.
+static PathResult buildResult(const Graph& g, const std::vector<int>& path,
+                               int steps, const std::string& name,
+                               OptCriteria crit = BY_DISTANCE) {
+    PathResult r;
+    r.path          = path;
+    r.found         = !path.empty();
+    r.stepsExplored = steps;
+    r.algoName      = name;
+    r.totalDist = r.totalTime = r.totalCost = 0.0;
+
+    for (int i = 0; i + 1 < (int)path.size(); i++) {
+        int u = path[i];
+        int v = path[i + 1];
+
+        std::vector<Edge> edges = g.getEdges(u);
+        bool   edgeFound = false;
+        double bestW     = INF;
+        double bestDist  = 0, bestTime = 0, bestCost = 0;
+
+        for (const Edge& e : edges) {
+            if (e.to != v) continue;
+            double w = weight(e, crit);
+            if (w < bestW) {
+                bestW    = w;
+                bestDist = e.distance;
+                bestTime = e.time;
+                bestCost = e.cost;
+            }
+            edgeFound = true;
+        }
+        if (!edgeFound) {
+            r.found     = false;
+            r.totalDist = r.totalTime = r.totalCost = 0.0;
+            return r;
+        }
+        r.totalDist += bestDist;
+        r.totalTime += bestTime;
+        r.totalCost += bestCost;
+    }
+    return r;
+}
+
+// ═════════════════════════════════════════════
+//  DIJKSTRA  —  O((V+E) log V)
+// ═════════════════════════════════════════════
 PathResult dijkstra(const Graph& g, int src, int dst, OptCriteria crit) {
     int n = g.numCities;
-    double dist[Graph::MAXN]; int prev[Graph::MAXN]; bool visited[Graph::MAXN];
-    for (int i = 0; i < n; i++) { dist[i] = INF; prev[i] = -1; visited[i] = false; }
-    dist[src] = 0;
+    std::vector<double> dist(n, INF);
+    std::vector<int>    prev(n, -1);
+    std::vector<bool>   visited(n, false);
+    // Store the actual edge used to reach each node
+    std::vector<Edge>   prevEdge(n, {-1, 0, 0, 0, ROAD});
 
-    MinHeap heap(n * n);
-    heap.push(0, src);
+    dist[src] = 0.0;
+    MinHeap heap(n * n + 10);
+    heap.push(0.0, src);
     int steps = 0;
 
     while (!heap.empty()) {
@@ -127,29 +190,101 @@ PathResult dijkstra(const Graph& g, int src, int dst, OptCriteria crit) {
         for (const Edge& e : g.getEdges(u)) {
             double w = weight(e, crit);
             if (!visited[e.to] && dist[u] + w < dist[e.to]) {
-                dist[e.to] = dist[u] + w;
-                prev[e.to] = u;
+                dist[e.to]     = dist[u] + w;
+                prev[e.to]     = u;
+                prevEdge[e.to] = e;
                 heap.push(dist[e.to], e.to);
             }
         }
     }
 
-    // Reconstruct path
-    std::vector<int> path;
+    // Reconstruct path and collect used edges
+    std::vector<int>  path;
+    std::vector<Edge> usedEdges;
     if (dist[dst] < INF) {
-        for (int v = dst; v != -1; v = prev[v]) path.insert(path.begin(), v);
+        for (int v = dst; v != -1; v = prev[v])
+            path.insert(path.begin(), v);
+        for (int i = 1; i < (int)path.size(); i++)
+            usedEdges.push_back(prevEdge[path[i]]);
     }
-    return buildResult(g, path, steps, "Dijkstra");
+    return buildResultFromEdges(path, usedEdges, steps, "Dijkstra");
 }
 
-// ─────────────────────────────────────────────
-//  BFS
-//  Time: O(V + E)  Space: O(V)
-// ─────────────────────────────────────────────
+// ═════════════════════════════════════════════
+//  DIJKSTRA FILTERED  —  only uses a given travel mode
+//  modeFilter = -1 means any mode
+// ═════════════════════════════════════════════
+PathResult dijkstraFiltered(const Graph& g, int src, int dst,
+                            OptCriteria crit, int modeFilter) {
+    if (modeFilter == -1)
+        return dijkstra(g, src, dst, crit);
+
+    // Validate: source and destination must have airport for AIR filter
+    if (modeFilter == AIR) {
+        if (!g.cities[src].hasAirport || !g.cities[dst].hasAirport) {
+            PathResult r;
+            r.found         = false;
+            r.stepsExplored = 0;
+            r.totalDist = r.totalTime = r.totalCost = 0.0;
+            r.algoName = "Air-Dijkstra";
+            return r;
+        }
+    }
+
+    int n = g.numCities;
+    std::vector<double> dist(n, INF);
+    std::vector<int>    prev(n, -1);
+    std::vector<bool>   visited(n, false);
+    std::vector<Edge>   prevEdge(n, {-1, 0, 0, 0, ROAD});
+
+    dist[src] = 0.0;
+    MinHeap heap(n * n + 10);
+    heap.push(0.0, src);
+    int steps = 0;
+
+    while (!heap.empty()) {
+        HeapNode cur = heap.pop();
+        int u = cur.cityIdx;
+        if (visited[u]) continue;
+        visited[u] = true;
+        steps++;
+        if (u == dst) break;
+
+        for (const Edge& e : g.getEdges(u)) {
+            // Only traverse edges of the chosen mode
+            if ((int)e.mode != modeFilter) continue;
+            double w = weight(e, crit);
+            if (!visited[e.to] && dist[u] + w < dist[e.to]) {
+                dist[e.to]     = dist[u] + w;
+                prev[e.to]     = u;
+                prevEdge[e.to] = e;
+                heap.push(dist[e.to], e.to);
+            }
+        }
+    }
+
+    std::vector<int>  path;
+    std::vector<Edge> usedEdges;
+    if (dist[dst] < INF) {
+        for (int v = dst; v != -1; v = prev[v])
+            path.insert(path.begin(), v);
+        for (int i = 1; i < (int)path.size(); i++)
+            usedEdges.push_back(prevEdge[path[i]]);
+    }
+
+    std::string name = (modeFilter == ROAD) ? "Road-Dijkstra" :
+                       (modeFilter == RAIL) ? "Rail-Dijkstra" : "Air-Dijkstra";
+    return buildResultFromEdges(path, usedEdges, steps, name);
+}
+
+// ═════════════════════════════════════════════
+//  BFS  —  O(V+E), minimises number of hops
+// ═════════════════════════════════════════════
 PathResult bfs(const Graph& g, int src, int dst) {
     int n = g.numCities;
-    bool visited[Graph::MAXN] = {};
-    Queue q(n * n * 4);
+    std::vector<bool> visited(n, false);
+    // Queue large enough for all paths (n cities × n path length worst case)
+    Queue q(n * n * 4 + 100);
     q.push({src, {src}});
     visited[src] = true;
     int steps = 0;
@@ -158,7 +293,7 @@ PathResult bfs(const Graph& g, int src, int dst) {
         QueueNode cur = q.pop();
         steps++;
         if (cur.cityIdx == dst)
-            return buildResult(g, cur.path, steps, "BFS");
+            return buildResult(g, cur.path, steps, "BFS", BY_DISTANCE);
 
         for (const Edge& e : g.getEdges(cur.cityIdx)) {
             if (!visited[e.to]) {
@@ -169,16 +304,16 @@ PathResult bfs(const Graph& g, int src, int dst) {
             }
         }
     }
-    return buildResult(g, {}, steps, "BFS");
+    return buildResult(g, {}, steps, "BFS", BY_DISTANCE);
 }
 
-// ─────────────────────────────────────────────
-//  DFS (iterative with explicit Stack)
-//  Time: O(V + E)  Space: O(V)
-// ─────────────────────────────────────────────
+// ═════════════════════════════════════════════
+//  DFS  —  iterative with explicit stack
+//  Finds a path (not necessarily optimal)
+// ═════════════════════════════════════════════
 PathResult dfs(const Graph& g, int src, int dst) {
     int n = g.numCities;
-    Stack stk(n * n * 4);
+    Stack stk(n * n * 4 + 100);
     stk.push({src, {src}});
     int steps = 0;
 
@@ -186,12 +321,13 @@ PathResult dfs(const Graph& g, int src, int dst) {
         StackNode cur = stk.pop();
         steps++;
         if (cur.cityIdx == dst)
-            return buildResult(g, cur.path, steps, "DFS");
+            return buildResult(g, cur.path, steps, "DFS", BY_DISTANCE);
 
         for (const Edge& e : g.getEdges(cur.cityIdx)) {
-            // Check if already in path
+            // Avoid revisiting nodes already in the current path (prevents cycles)
             bool inPath = false;
-            for (int p : cur.path) if (p == e.to) { inPath = true; break; }
+            for (int p : cur.path)
+                if (p == e.to) { inPath = true; break; }
             if (!inPath) {
                 std::vector<int> newPath = cur.path;
                 newPath.push_back(e.to);
@@ -199,166 +335,40 @@ PathResult dfs(const Graph& g, int src, int dst) {
             }
         }
     }
-    return buildResult(g, {}, steps, "DFS");
+    return buildResult(g, {}, steps, "DFS", BY_DISTANCE);
 }
 
 // ─────────────────────────────────────────────
-//  Haversine heuristic for A*
+//  Haversine formula: great-circle distance (km)
+//  Used as the admissible heuristic in A*
 // ─────────────────────────────────────────────
 static double haversine(double lat1, double lng1, double lat2, double lng2) {
     double dLat = (lat2 - lat1) * M_PI / 180.0;
     double dLng = (lng2 - lng1) * M_PI / 180.0;
-    double a = sin(dLat/2)*sin(dLat/2)
-             + cos(lat1*M_PI/180)*cos(lat2*M_PI/180)*sin(dLng/2)*sin(dLng/2);
-    return 6371.0 * 2 * atan2(sqrt(a), sqrt(1-a));
+    double a = sin(dLat / 2) * sin(dLat / 2)
+             + cos(lat1 * M_PI / 180.0) * cos(lat2 * M_PI / 180.0)
+             * sin(dLng / 2) * sin(dLng / 2);
+    return 6371.0 * 2.0 * atan2(sqrt(a), sqrt(1.0 - a));
 }
 
-// ─────────────────────────────────────────────
-//  A* ALGORITHM
-//  Time: O((V + E) log V)  Space: O(V)
-// ─────────────────────────────────────────────
+// ═════════════════════════════════════════════
+//  A*  —  O((V+E) log V), heuristic-guided
+//  Uses Haversine distance as heuristic (admissible for BY_DISTANCE)
+// ═════════════════════════════════════════════
 PathResult astar(const Graph& g, int src, int dst, OptCriteria crit) {
     int n = g.numCities;
-    double gCost[Graph::MAXN], fCost[Graph::MAXN];
-    int prev[Graph::MAXN];
-    bool closed[Graph::MAXN];
-    for (int i = 0; i < n; i++) {
-        gCost[i] = INF; fCost[i] = INF;
-        prev[i]  = -1;  closed[i] = false;
-    }
-    gCost[src] = 0;
-    double h = haversine(g.cities[src].lat, g.cities[src].lng,
-                         g.cities[dst].lat, g.cities[dst].lng);
-    fCost[src] = h;
+    std::vector<double> gCost(n, INF);
+    std::vector<double> fCost(n, INF);
+    std::vector<int>    prev(n, -1);
+    std::vector<bool>   visited(n, false);
+    std::vector<Edge>   prevEdge(n, {-1, 0, 0, 0, ROAD});
 
-    MinHeap heap(n * n);
+    gCost[src] = 0.0;
+    fCost[src] = haversine(g.cities[src].lat, g.cities[src].lng,
+                           g.cities[dst].lat,  g.cities[dst].lng);
+
+    MinHeap heap(n * n + 10);
     heap.push(fCost[src], src);
-    int steps = 0;
-
-    while (!heap.empty()) {
-        HeapNode cur = heap.pop();
-        int u = cur.cityIdx;
-        if (closed[u]) continue;
-        closed[u] = true;
-        steps++;
-        if (u == dst) break;
-
-        for (const Edge& e : g.getEdges(u)) {
-            if (closed[e.to]) continue;
-            double w = weight(e, crit);
-            double ng = gCost[u] + w;
-            if (ng < gCost[e.to]) {
-                gCost[e.to] = ng;
-                prev[e.to]  = u;
-                double hv   = haversine(g.cities[e.to].lat, g.cities[e.to].lng,
-                                         g.cities[dst].lat,  g.cities[dst].lng);
-                fCost[e.to] = ng + hv;
-                heap.push(fCost[e.to], e.to);
-            }
-        }
-    }
-
-    std::vector<int> path;
-    if (gCost[dst] < INF)
-        for (int v = dst; v != -1; v = prev[v]) path.insert(path.begin(), v);
-    return buildResult(g, path, steps, "A*");
-}
-
-// ─────────────────────────────────────────────
-//  BELLMAN-FORD
-//  Time: O(V * E)  Space: O(V)
-// ─────────────────────────────────────────────
-PathResult bellmanFord(const Graph& g, int src, int dst, OptCriteria crit) {
-    int n = g.numCities;
-    double dist[Graph::MAXN]; int prev[Graph::MAXN];
-    for (int i = 0; i < n; i++) { dist[i] = INF; prev[i] = -1; }
-    dist[src] = 0;
-
-    // Collect all edges
-    struct RawEdge { int u, v; double w; };
-    std::vector<RawEdge> edges;
-    for (int u = 0; u < n; u++)
-        for (const Edge& e : g.getEdges(u))
-            edges.push_back({u, e.to, weight(e, crit)});
-
-    int steps = 0;
-    // Relax V-1 times
-    for (int iter = 0; iter < n - 1; iter++) {
-        for (auto& e : edges) {
-            steps++;
-            if (dist[e.u] < INF && dist[e.u] + e.w < dist[e.v]) {
-                dist[e.v] = dist[e.u] + e.w;
-                prev[e.v] = e.u;
-            }
-        }
-    }
-
-    // Check negative cycles
-    bool negCycle = false;
-    for (auto& e : edges)
-        if (dist[e.u] < INF && dist[e.u] + e.w < dist[e.v]) { negCycle = true; break; }
-
-    if (negCycle) {
-        std::cout << RED << "  [Bellman-Ford] Negative cycle detected!\n" << RESET;
-        return buildResult(g, {}, steps, "Bellman-Ford");
-    }
-
-    std::vector<int> path;
-    if (dist[dst] < INF)
-        for (int v = dst; v != -1; v = prev[v]) path.insert(path.begin(), v);
-    return buildResult(g, path, steps, "Bellman-Ford");
-}
-
-// ─────────────────────────────────────────────
-//  FLOYD-WARSHALL  (all-pairs shortest path)
-//  Time: O(V^3)  Space: O(V^2)
-// ─────────────────────────────────────────────
-void floydWarshall(const Graph& g, OptCriteria crit,
-                   double dist[][Graph::MAXN], int next[][Graph::MAXN]) {
-    int n = g.numCities;
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < n; j++) {
-            dist[i][j] = (i == j) ? 0 : INF;
-            next[i][j] = -1;
-        }
-
-    for (int u = 0; u < n; u++)
-        for (const Edge& e : g.getEdges(u)) {
-            double w = weight(e, crit);
-            if (w < dist[u][e.to]) {
-                dist[u][e.to] = w;
-                next[u][e.to] = e.to;
-            }
-        }
-
-    for (int k = 0; k < n; k++)
-        for (int i = 0; i < n; i++)
-            for (int j = 0; j < n; j++)
-                if (dist[i][k] < INF && dist[k][j] < INF)
-                    if (dist[i][k] + dist[k][j] < dist[i][j]) {
-                        dist[i][j] = dist[i][k] + dist[k][j];
-                        next[i][j] = next[i][k];
-                    }
-}
-
-// ─────────────────────────────────────────────
-//  BUDGET-CONSTRAINED DIJKSTRA
-//  Time: O((V + E) log V)  Space: O(V)
-// ─────────────────────────────────────────────
-PathResult budgetDijkstra(const Graph& g, int src, int dst,
-                          double maxBudget, OptCriteria crit) {
-    int n = g.numCities;
-    double dist[Graph::MAXN]; int prev[Graph::MAXN]; bool visited[Graph::MAXN];
-    double spent[Graph::MAXN]; // track cost separately
-    for (int i = 0; i < n; i++) {
-        dist[i] = INF; prev[i] = -1;
-        visited[i] = false; spent[i] = INF;
-    }
-    dist[src]  = 0;
-    spent[src] = 0;
-
-    MinHeap heap(n * n);
-    heap.push(0, src);
     int steps = 0;
 
     while (!heap.empty()) {
@@ -370,39 +380,193 @@ PathResult budgetDijkstra(const Graph& g, int src, int dst,
         if (u == dst) break;
 
         for (const Edge& e : g.getEdges(u)) {
-            double w   = weight(e, crit);
+            if (visited[e.to]) continue;
+            double w  = weight(e, crit);
+            double ng = gCost[u] + w;
+            if (ng < gCost[e.to]) {
+                gCost[e.to]    = ng;
+                prev[e.to]     = u;
+                prevEdge[e.to] = e;
+                double hv = (crit == BY_DISTANCE)
+                    ? haversine(g.cities[e.to].lat, g.cities[e.to].lng,
+                                g.cities[dst].lat,  g.cities[dst].lng)
+                    : 0.0;
+                fCost[e.to] = ng + hv;
+                heap.push(fCost[e.to], e.to);
+            }
+        }
+    }
+
+    std::vector<int>  path;
+    std::vector<Edge> usedEdges;
+    if (gCost[dst] < INF) {
+        for (int v = dst; v != -1; v = prev[v])
+            path.insert(path.begin(), v);
+        for (int i = 1; i < (int)path.size(); i++)
+            usedEdges.push_back(prevEdge[path[i]]);
+    }
+    return buildResultFromEdges(path, usedEdges, steps, "A*");
+}
+
+// ═════════════════════════════════════════════
+//  BELLMAN-FORD  —  O(V × E)
+//  Handles negative weights; detects negative cycles
+// ═════════════════════════════════════════════
+PathResult bellmanFord(const Graph& g, int src, int dst, OptCriteria crit) {
+    int n = g.numCities;
+    std::vector<double> dist(n, INF);
+    std::vector<int>    prev(n, -1);
+    dist[src] = 0.0;
+
+    // Collect all directed edges (with original Edge reference for prevEdge tracking)
+    struct RawEdge { int u, v; double w; Edge orig; };
+    std::vector<RawEdge> edges;
+    for (int u = 0; u < n; u++)
+        for (const Edge& e : g.getEdges(u))
+            edges.push_back({u, e.to, weight(e, crit), e});
+
+    std::vector<Edge> prevEdge(n, {-1, 0, 0, 0, ROAD});
+    int steps = 0;
+
+    // Relax V-1 times
+    for (int iter = 0; iter < n - 1; iter++) {
+        bool updated = false;
+        for (auto& e : edges) {
+            steps++;
+            if (dist[e.u] < INF && dist[e.u] + e.w < dist[e.v]) {
+                dist[e.v]     = dist[e.u] + e.w;
+                prev[e.v]     = e.u;
+                prevEdge[e.v] = e.orig;
+                updated       = true;
+            }
+        }
+        if (!updated) break;  // Early exit if no updates
+    }
+
+    // Check for negative cycles
+    for (auto& e : edges) {
+        if (dist[e.u] < INF && dist[e.u] + e.w < dist[e.v]) {
+            std::cout << RED << "  [Bellman-Ford] Negative cycle detected!\n" << RESET;
+            return buildResultFromEdges({}, {}, steps, "Bellman-Ford");
+        }
+    }
+
+    std::vector<int>  path;
+    std::vector<Edge> usedEdges;
+    if (dist[dst] < INF) {
+        for (int v = dst; v != -1; v = prev[v])
+            path.insert(path.begin(), v);
+        for (int i = 1; i < (int)path.size(); i++)
+            usedEdges.push_back(prevEdge[path[i]]);
+    }
+    return buildResultFromEdges(path, usedEdges, steps, "Bellman-Ford");
+}
+
+// ═════════════════════════════════════════════
+//  FLOYD-WARSHALL  —  O(V³), all-pairs shortest paths
+// ═════════════════════════════════════════════
+void floydWarshall(const Graph& g, OptCriteria crit,
+                   double dist[][Graph::MAXN], int next[][Graph::MAXN]) {
+    int n = g.numCities;
+
+    // Initialize
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++) {
+            dist[i][j] = (i == j) ? 0.0 : INF;
+            next[i][j] = -1;
+        }
+
+    // Seed with direct edges
+    for (int u = 0; u < n; u++) {
+        for (const Edge& e : g.getEdges(u)) {
+            double w = weight(e, crit);
+            if (w < dist[u][e.to]) {
+                dist[u][e.to] = w;
+                next[u][e.to] = e.to;
+            }
+        }
+    }
+
+    // Relax through all intermediate vertices
+    for (int k = 0; k < n; k++)
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                if (dist[i][k] < INF && dist[k][j] < INF)
+                    if (dist[i][k] + dist[k][j] < dist[i][j]) {
+                        dist[i][j] = dist[i][k] + dist[k][j];
+                        next[i][j] = next[i][k];
+                    }
+}
+
+// ═════════════════════════════════════════════
+//  BUDGET-CONSTRAINED DIJKSTRA
+//  Finds best path (by crit) while keeping total cost ≤ maxBudget
+// ═════════════════════════════════════════════
+PathResult budgetDijkstra(const Graph& g, int src, int dst,
+                          double maxBudget, OptCriteria crit) {
+    int n = g.numCities;
+    std::vector<double> dist(n, INF);
+    std::vector<int>    prev(n, -1);
+    std::vector<bool>   visited(n, false);
+    std::vector<double> spent(n, INF);      // cumulative INR cost on best path
+    std::vector<Edge>   prevEdge(n, {-1, 0, 0, 0, ROAD});
+
+    dist[src]  = 0.0;
+    spent[src] = 0.0;
+
+    MinHeap heap(n * n + 10);
+    heap.push(0.0, src);
+    int steps = 0;
+
+    while (!heap.empty()) {
+        HeapNode cur = heap.pop();
+        int u = cur.cityIdx;
+        if (visited[u]) continue;
+        visited[u] = true;
+        steps++;
+        if (u == dst) break;
+
+        for (const Edge& e : g.getEdges(u)) {
             double newSpent = spent[u] + e.cost;
-            if (newSpent > maxBudget) continue;   // budget constraint
+            if (newSpent > maxBudget) continue;        // budget exceeded — skip
+
+            double w = weight(e, crit);
             if (!visited[e.to] && dist[u] + w < dist[e.to]) {
-                dist[e.to]  = dist[u] + w;
-                prev[e.to]  = u;
-                spent[e.to] = newSpent;
+                dist[e.to]     = dist[u] + w;
+                prev[e.to]     = u;
+                spent[e.to]    = newSpent;
+                prevEdge[e.to] = e;
                 heap.push(dist[e.to], e.to);
             }
         }
     }
 
-    std::vector<int> path;
-    if (dist[dst] < INF)
-        for (int v = dst; v != -1; v = prev[v]) path.insert(path.begin(), v);
-    auto res = buildResult(g, path, steps, "Budget-Dijkstra");
-    return res;
+    std::vector<int>  path;
+    std::vector<Edge> usedEdges;
+    if (dist[dst] < INF) {
+        for (int v = dst; v != -1; v = prev[v])
+            path.insert(path.begin(), v);
+        for (int i = 1; i < (int)path.size(); i++)
+            usedEdges.push_back(prevEdge[path[i]]);
+    }
+    return buildResultFromEdges(path, usedEdges, steps, "Budget-Dijkstra");
 }
 
-// ─────────────────────────────────────────────
-//  Multi-stop: Nearest Neighbour TSP heuristic
-// ─────────────────────────────────────────────
+// ═════════════════════════════════════════════
+//  MULTI-STOP PLANNER  —  Nearest-Neighbour TSP heuristic
+// ═════════════════════════════════════════════
 std::vector<int> multiStopPlan(const Graph& g, int start,
                                std::vector<int>& stops, OptCriteria crit) {
-    std::vector<int> order;
+    std::vector<int>  order;
     order.push_back(start);
     std::vector<bool> visited(stops.size(), false);
 
     int cur = start;
     for (int iter = 0; iter < (int)stops.size(); iter++) {
-        double best = INF;
-        int    bestIdx = -1;
+        double     best     = INF;
+        int        bestIdx  = -1;
         PathResult bestPath;
+
         for (int i = 0; i < (int)stops.size(); i++) {
             if (visited[i] || stops[i] == cur) continue;
             PathResult r = dijkstra(g, cur, stops[i], crit);
@@ -414,7 +578,7 @@ std::vector<int> multiStopPlan(const Graph& g, int start,
         }
         if (bestIdx == -1) break;
         visited[bestIdx] = true;
-        // append sub-path (skip first element to avoid duplicates)
+        // Append sub-path (skip first city to avoid duplicating the junction)
         for (int i = 1; i < (int)bestPath.path.size(); i++)
             order.push_back(bestPath.path[i]);
         cur = stops[bestIdx];
@@ -422,9 +586,9 @@ std::vector<int> multiStopPlan(const Graph& g, int start,
     return order;
 }
 
-// ─────────────────────────────────────────────
-//  Print Path Result
-// ─────────────────────────────────────────────
+// ═════════════════════════════════════════════
+//  PRINT PATH RESULT
+// ═════════════════════════════════════════════
 void printPath(const Graph& g, const PathResult& r) {
     using namespace std;
     if (!r.found) {
@@ -438,20 +602,20 @@ void printPath(const Graph& g, const PathResult& r) {
     }
     cout << "\n\n";
     cout << "  ┌────────────────────────────────┐\n";
-    cout << "  │  " << CYAN << "Total Distance : " << RESET
-         << setw(8) << fixed << setprecision(0) << r.totalDist << " km        │\n";
-    cout << "  │  " << CYAN << "Total Time     : " << RESET
-         << setw(8) << fixed << setprecision(0) << r.totalTime / 60.0 << " hrs       │\n";
-    cout << "  │  " << CYAN << "Total Cost     : " << RESET
+    cout << "  │  " << CYAN  << "Total Distance : " << RESET
+         << setw(8) << fixed << setprecision(0) << r.totalDist << " km       │\n";
+    cout << "  │  " << CYAN  << "Total Time     : " << RESET
+         << setw(8) << fixed << setprecision(1) << r.totalTime / 60.0 << " hrs      │\n";
+    cout << "  │  " << CYAN  << "Total Cost     : " << RESET
          << "₹" << setw(7) << fixed << setprecision(0) << r.totalCost << "        │\n";
     cout << "  │  " << YELLOW << "Steps Explored : " << RESET
          << setw(8) << r.stepsExplored << "           │\n";
     cout << "  └────────────────────────────────┘\n";
 }
 
-// ─────────────────────────────────────────────
-//  Comparison Table
-// ─────────────────────────────────────────────
+// ═════════════════════════════════════════════
+//  COMPARISON TABLE
+// ═════════════════════════════════════════════
 void printComparisonTable(const Graph& g, int src, int dst,
                           const std::vector<PathResult>& results) {
     using namespace std;
@@ -459,7 +623,7 @@ void printComparisonTable(const Graph& g, int src, int dst,
          << g.cities[src].name << " → " << g.cities[dst].name << "\n" << RESET;
     cout << "  ╔══════════════╦══════════╦══════════╦══════════╦════════╦═══════════╗\n";
     cout << "  ║ " << YELLOW << left << setw(12) << "Algorithm" << RESET
-         << " ║ " << setw(8) << "Dist(km)" 
+         << " ║ " << setw(8) << "Dist(km)"
          << " ║ " << setw(8) << "Time(hr)"
          << " ║ " << setw(8) << "Cost(₹)"
          << " ║ " << setw(6) << "Steps"
@@ -467,11 +631,10 @@ void printComparisonTable(const Graph& g, int src, int dst,
          << " ║\n";
     cout << "  ╠══════════════╬══════════╬══════════╬══════════╬════════╬═══════════╣\n";
 
-    for (auto& r : results) {
-        string found = r.found ? "" : "(No path)";
+    for (const auto& r : results) {
         cout << "  ║ " << GREEN << left << setw(12) << r.algoName << RESET
              << " ║ " << setw(8) << (r.found ? to_string((int)r.totalDist) : "-")
-             << " ║ " << setw(8) << (r.found ? to_string((int)(r.totalTime/60)) + "h" : "-")
+             << " ║ " << setw(8) << (r.found ? to_string((int)(r.totalTime / 60)) + "h" : "-")
              << " ║ " << setw(8) << (r.found ? to_string((int)r.totalCost) : "-")
              << " ║ " << setw(6) << r.stepsExplored
              << " ║ " << setw(9) << (r.found ? (int)r.path.size() : 0)

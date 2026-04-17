@@ -7,10 +7,10 @@
 //  Result type returned by path-finding algos
 // ─────────────────────────────────────────────
 struct PathResult {
-    std::vector<int> path;   // city indices
-    double totalDist;
-    double totalTime;
-    double totalCost;
+    std::vector<int> path;   // city indices along the route
+    double totalDist;        // km
+    double totalTime;        // minutes
+    double totalCost;        // INR
     bool   found;
     int    stepsExplored;    // nodes visited during search
     std::string algoName;
@@ -26,16 +26,16 @@ struct HeapNode {
 
 class MinHeap {
     HeapNode* data;
-    int       size;
+    int       sz;
     int       capacity;
     void heapifyUp(int i);
     void heapifyDown(int i);
 public:
     MinHeap(int cap);
     ~MinHeap();
-    void   push(double key, int city);
+    void     push(double key, int city);
     HeapNode pop();
-    bool   empty() const { return size == 0; }
+    bool     empty() const { return sz == 0; }
 };
 
 // ─────────────────────────────────────────────
@@ -53,9 +53,9 @@ class Stack {
 public:
     Stack(int cap);
     ~Stack();
-    void push(StackNode n);
+    void      push(StackNode n);
     StackNode pop();
-    bool empty() const { return top < 0; }
+    bool      empty() const { return top < 0; }
 };
 
 // ─────────────────────────────────────────────
@@ -72,32 +72,46 @@ class Queue {
 public:
     Queue(int cap);
     ~Queue();
-    void push(QueueNode n);
+    void      push(QueueNode n);
     QueueNode pop();
-    bool empty() const { return head == tail; }
+    bool      empty() const { return head == tail; }
 };
+
+// ─────────────────────────────────────────────
+//  Optimization criteria
+// ─────────────────────────────────────────────
+enum OptCriteria { BY_DISTANCE = 0, BY_TIME = 1, BY_COST = 2 };
 
 // ─────────────────────────────────────────────
 //  Algorithm functions
 // ─────────────────────────────────────────────
-enum OptCriteria { BY_DISTANCE = 0, BY_TIME = 1, BY_COST = 2 };
 
-PathResult dijkstra(const Graph& g, int src, int dst, OptCriteria crit);
-PathResult bfs(const Graph& g, int src, int dst);
-PathResult dfs(const Graph& g, int src, int dst);
-PathResult astar(const Graph& g, int src, int dst, OptCriteria crit);
+// Standard shortest-path algorithms
+PathResult dijkstra   (const Graph& g, int src, int dst, OptCriteria crit);
+PathResult bfs        (const Graph& g, int src, int dst);
+PathResult dfs        (const Graph& g, int src, int dst);
+PathResult astar      (const Graph& g, int src, int dst, OptCriteria crit);
 PathResult bellmanFord(const Graph& g, int src, int dst, OptCriteria crit);
-void       floydWarshall(const Graph& g, OptCriteria crit,
-                         double dist[][Graph::MAXN], int next[][Graph::MAXN]);
 
+// All-pairs shortest paths (Floyd-Warshall)
+// Arrays sized to MAXN = 75
+void floydWarshall(const Graph& g, OptCriteria crit,
+                   double dist[][Graph::MAXN], int next[][Graph::MAXN]);
+
+// Budget-constrained routing
 PathResult budgetDijkstra(const Graph& g, int src, int dst,
                           double maxBudget, OptCriteria crit);
+
+// Mode-filtered routing: only use edges of given mode (or ANY)
+// modeFilter = -1 means no filter (any mode allowed)
+PathResult dijkstraFiltered(const Graph& g, int src, int dst,
+                            OptCriteria crit, int modeFilter);
 
 // Multi-stop: nearest-neighbour TSP heuristic
 std::vector<int> multiStopPlan(const Graph& g, int start,
                                std::vector<int>& stops, OptCriteria crit);
 
 // Print helpers
-void printPath(const Graph& g, const PathResult& r);
-void printComparisonTable(const Graph& g, int src, int dst,
-                          const std::vector<PathResult>& results);
+void printPath            (const Graph& g, const PathResult& r);
+void printComparisonTable (const Graph& g, int src, int dst,
+                           const std::vector<PathResult>& results);
