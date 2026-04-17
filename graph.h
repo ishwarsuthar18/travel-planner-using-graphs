@@ -35,7 +35,7 @@ struct AdjNode {
 // ─────────────────────────────────────────────
 class Graph {
 public:
-    static const int MAXN = 20;
+    static const int MAXN = 60;
     int   numCities;
     City  cities[MAXN];
 
@@ -53,7 +53,7 @@ public:
     void addEdge(int from, int to, double dist, double time, double cost,
                  TravelMode mode, bool undirected = true);
 
-    void loadDefaultNetwork();   // pre-loads 15 Indian cities
+    void loadDefaultNetwork();   // pre-loads 45 Indian cities
 
     // Utilities
     int  getCityIndex(const std::string& name) const;

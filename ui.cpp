@@ -131,7 +131,7 @@ void animateSearching(const std::string& msg) {
     std::cout << YELLOW << "  " << msg << RESET;
     std::cout.flush();
     for (int i = 0; i < 3; i++) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+      //  std::this_thread::sleep_for(std::chrono::milliseconds(250));
         std::cout << YELLOW << "." << RESET;
         std::cout.flush();
     }

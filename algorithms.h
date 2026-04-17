@@ -88,7 +88,7 @@ PathResult dfs(const Graph& g, int src, int dst);
 PathResult astar(const Graph& g, int src, int dst, OptCriteria crit);
 PathResult bellmanFord(const Graph& g, int src, int dst, OptCriteria crit);
 void       floydWarshall(const Graph& g, OptCriteria crit,
-                         double dist[][20], int next[][20]);
+                         double dist[][Graph::MAXN], int next[][Graph::MAXN]);
 
 PathResult budgetDijkstra(const Graph& g, int src, int dst,
                           double maxBudget, OptCriteria crit);

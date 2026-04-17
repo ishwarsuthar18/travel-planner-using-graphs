@@ -218,7 +218,8 @@ void menuFloyd(Graph& g) {
     int crit = selectCriteria();
     animateSearching("  Computing all-pairs matrix");
 
-    double dist[20][20]; int next[20][20];
+    double dist[Graph::MAXN][Graph::MAXN];
+    int next[Graph::MAXN][Graph::MAXN];
     floydWarshall(g, (OptCriteria)crit, dist, next);
 
     std::string label = (crit == BY_TIME) ? "Time(min)" :

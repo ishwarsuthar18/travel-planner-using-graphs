@@ -6,7 +6,7 @@ A complete **terminal-based Indian city travel planner** built in C++ using grap
 
 ## Features
 
-- **15 Indian cities** pre-loaded with realistic road/rail/air connections
+- **45 Indian cities** pre-loaded with realistic road/rail/air connections
 - **6 algorithms** all implemented from scratch
 - Rich **ANSI-colored terminal UI** with menus, tables, and step-by-step breakdown
 - **Budget-constrained routing**, multi-stop planning, graph visualization
@@ -73,7 +73,7 @@ travel-planner/
 
 ## Graph Data
 
-- 15 cities: Delhi, Mumbai, Bangalore, Chennai, Kolkata, Hyderabad, Jaipur, Ahmedabad, Pune, Lucknow, Bhopal, Nagpur, Surat, Kanpur, Patna
+- 45 cities including Delhi, Mumbai, Bangalore, Chennai, Kolkata, Hyderabad, Jaipur, Ahmedabad, Pune, Lucknow, Bhopal, Nagpur, Surat, Kanpur, Patna, Jodhpur, Kochi, Guwahati, Chandigarh, Udaipur, Bhubaneswar, Visakhapatnam, and more
 - Each edge stores: **distance (km)**, **time (minutes)**, **cost (₹)**, **travel mode** (Road/Rail/Air)
 - Realistic coordinates (lat/lng) used by A* heuristic (Haversine formula)
 
@@ -91,13 +91,13 @@ travel-planner/
   ┌────────────────────────────────┐
   │  Total Distance :      948 km  │
   │  Total Time     :       15 hrs │
-  │  Total Cost     :    ₹ 3450   │
+  │  Total Cost     :     ₹ 3450   │
   │  Steps Explored :        5     │
   └────────────────────────────────┘
 
   Algorithm Comparison:
   ╔══════════════╦══════════╦══════════╦══════════╦════════╗
-  ║ Algorithm    ║ Dist(km) ║ Time(hr) ║ Cost(₹) ║ Steps  ║
+  ║ Algorithm    ║ Dist(km) ║ Time(hr) ║ Cost(₹)  ║ Steps  ║
   ╠══════════════╬══════════╬══════════╬══════════╬════════╣
   ║ Dijkstra     ║ 1511     ║ 22h      ║ 4600     ║ 9      ║
   ║ BFS          ║ 1515     ║ 20h      ║ 4500     ║ 10     ║

@@ -6,6 +6,10 @@
 #include <climits>
 #include <string>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 const double INF = 1e18;
 
 // ─────────────────────────────────────────────
@@ -104,7 +108,7 @@ static PathResult buildResult(const Graph& g, const std::vector<int>& path,
 // ─────────────────────────────────────────────
 PathResult dijkstra(const Graph& g, int src, int dst, OptCriteria crit) {
     int n = g.numCities;
-    double dist[20]; int prev[20]; bool visited[20];
+    double dist[Graph::MAXN]; int prev[Graph::MAXN]; bool visited[Graph::MAXN];
     for (int i = 0; i < n; i++) { dist[i] = INF; prev[i] = -1; visited[i] = false; }
     dist[src] = 0;
 
@@ -144,7 +148,7 @@ PathResult dijkstra(const Graph& g, int src, int dst, OptCriteria crit) {
 // ─────────────────────────────────────────────
 PathResult bfs(const Graph& g, int src, int dst) {
     int n = g.numCities;
-    bool visited[20] = {};
+    bool visited[Graph::MAXN] = {};
     Queue q(n * n * 4);
     q.push({src, {src}});
     visited[src] = true;
@@ -215,7 +219,9 @@ static double haversine(double lat1, double lng1, double lat2, double lng2) {
 // ─────────────────────────────────────────────
 PathResult astar(const Graph& g, int src, int dst, OptCriteria crit) {
     int n = g.numCities;
-    double gCost[20], fCost[20]; int prev[20]; bool closed[20];
+    double gCost[Graph::MAXN], fCost[Graph::MAXN];
+    int prev[Graph::MAXN];
+    bool closed[Graph::MAXN];
     for (int i = 0; i < n; i++) {
         gCost[i] = INF; fCost[i] = INF;
         prev[i]  = -1;  closed[i] = false;
@@ -264,7 +270,7 @@ PathResult astar(const Graph& g, int src, int dst, OptCriteria crit) {
 // ─────────────────────────────────────────────
 PathResult bellmanFord(const Graph& g, int src, int dst, OptCriteria crit) {
     int n = g.numCities;
-    double dist[20]; int prev[20];
+    double dist[Graph::MAXN]; int prev[Graph::MAXN];
     for (int i = 0; i < n; i++) { dist[i] = INF; prev[i] = -1; }
     dist[src] = 0;
 
@@ -308,7 +314,7 @@ PathResult bellmanFord(const Graph& g, int src, int dst, OptCriteria crit) {
 //  Time: O(V^3)  Space: O(V^2)
 // ─────────────────────────────────────────────
 void floydWarshall(const Graph& g, OptCriteria crit,
-                   double dist[][20], int next[][20]) {
+                   double dist[][Graph::MAXN], int next[][Graph::MAXN]) {
     int n = g.numCities;
     for (int i = 0; i < n; i++)
         for (int j = 0; j < n; j++) {
@@ -342,8 +348,8 @@ void floydWarshall(const Graph& g, OptCriteria crit,
 PathResult budgetDijkstra(const Graph& g, int src, int dst,
                           double maxBudget, OptCriteria crit) {
     int n = g.numCities;
-    double dist[20]; int prev[20]; bool visited[20];
-    double spent[20]; // track cost separately
+    double dist[Graph::MAXN]; int prev[Graph::MAXN]; bool visited[Graph::MAXN];
+    double spent[Graph::MAXN]; // track cost separately
     for (int i = 0; i < n; i++) {
         dist[i] = INF; prev[i] = -1;
         visited[i] = false; spent[i] = INF;
